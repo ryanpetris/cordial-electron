@@ -1,0 +1,14 @@
+version: v2
+lint:
+  use:
+    - STANDARD
+  except:
+    - ENUM_ZERO_VALUE_SUFFIX
+    - PACKAGE_VERSION_SUFFIX
+    # The schema lives in the repository's proto directory, not one named after its package.
+    - PACKAGE_DIRECTORY_MATCH
+    # Serial and host IPC schemas share the root directory in distinct packages.
+    - DIRECTORY_SAME_PACKAGE
+breaking:
+  use:
+    - WIRE_JSON

@@ -1,0 +1,121 @@
+name: Check
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CORDIAL_VERSION: 0.0.0
+  npm_config_cache: ${{ github.workspace }}/.cache/npm
+jobs:
+  desktop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libudev-dev pkg-config
+      - name: Check and build
+        run: make check build web
+      - name: Package desktop and web
+        run: |
+          make package-desktop package-web
+          python3 tools/check_release_archive.py "desktop/dist/cordial-desktop-$CORDIAL_VERSION-x64.tar.gz" desktop "$CORDIAL_VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: portable
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.tar.gz
+            build/packages/web/
+          compression-level: 0
+          if-no-files-found: error
+  arch:
+    needs: desktop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: portable
+      - name: Build and check native package
+        run: |
+          make package-desktop-arch DESKTOP_ARCHIVE="desktop/dist/cordial-desktop-$CORDIAL_VERSION-x64.tar.gz"
+          docker run --rm -v "$PWD:/src" -w /src -e CORDIAL_VERSION archlinux:base-devel packaging/check-arch.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arch
+          path: release/
+          compression-level: 0
+          if-no-files-found: error
+  debian:
+    needs: desktop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:13
+            distribution: trixie
+          - image: ubuntu:24.04
+            distribution: noble
+          - image: ubuntu:26.04
+            distribution: resolute
+    env:
+      DEB_DISTRIBUTION: ${{ matrix.distribution }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: portable
+      - name: Build and check native package
+        run: |
+          make package-desktop-deb DESKTOP_ARCHIVE="desktop/dist/cordial-desktop-$CORDIAL_VERSION-x64.tar.gz"
+          docker run --rm -v "$PWD:/src" -w /src -e CORDIAL_VERSION -e DEB_DISTRIBUTION '${{ matrix.image }}' packaging/check-deb.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.distribution }}
+          path: release/
+          compression-level: 0
+          if-no-files-found: error
+  smoke:
+    needs: debian
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: noble
+          path: build/native
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+      - name: Install package and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb dbus-x11 ./build/native/cordial-desktop_*_amd64.deb
+          npm ci --ignore-scripts --no-audit --no-fund --prefix desktop
+      - name: Check installed desktop with sandbox enabled
+        run: CORDIAL_EXECUTABLE=/opt/cordial-desktop/cordial-desktop xvfb-run -a dbus-run-session -- node desktop/scripts/smoke.mjs desktop/out/package-smoke

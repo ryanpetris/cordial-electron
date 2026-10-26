@@ -1,0 +1,8 @@
+node_modules/
+/desktop/out/
+/desktop/dist/
+/build/
+/.cache/
+/release/
+__pycache__/
+*.log
