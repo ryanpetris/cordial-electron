@@ -1,18 +1,38 @@
-name: Check
+name: Release
 on:
   push:
-  pull_request:
-  workflow_dispatch:
+    tags: ['v*']
 permissions:
   contents: read
 concurrency:
-  group: check-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 env:
-  CORDIAL_VERSION: 0.0.0
   npm_config_cache: ${{ github.workspace }}/.cache/npm
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      epoch: ${{ steps.version.outputs.epoch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate release tag
+        id: version
+        shell: bash
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "epoch=$(git show -s --format=%ct HEAD)" >> "$GITHUB_OUTPUT"
   desktop:
+    needs: validate
+    env:
+      CORDIAL_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -33,6 +53,7 @@ jobs:
       - name: Package desktop and web
         run: |
           make package-desktop package-web
+          tar -C build/packages/web -czf "build/packages/web/cordial-web-$CORDIAL_VERSION.tar.gz" "cordial-web-$CORDIAL_VERSION"
           python3 tools/check_release_archive.py "desktop/dist/cordial-desktop-$CORDIAL_VERSION-x64.tar.gz" desktop "$CORDIAL_VERSION"
       - uses: actions/upload-artifact@v7
         with:
@@ -40,10 +61,14 @@ jobs:
           path: |
             desktop/dist/*.AppImage
             desktop/dist/*.tar.gz
-            build/packages/web/
+            build/packages/web/*.tar.gz
           compression-level: 0
           if-no-files-found: error
   desktop-platforms:
+    needs: validate
+    env:
+      CORDIAL_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -131,7 +156,10 @@ jobs:
           name: smoke-${{ matrix.artifact }}
           path: desktop/out/package-smoke/
   arch:
-    needs: desktop
+    needs: [validate, desktop]
+    env:
+      CORDIAL_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -152,7 +180,11 @@ jobs:
           compression-level: 0
           if-no-files-found: error
   debian:
-    needs: desktop
+    needs: [validate, desktop]
+    env:
+      CORDIAL_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
+      DEB_DISTRIBUTION: ${{ matrix.distribution }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -165,8 +197,6 @@ jobs:
             distribution: noble
           - image: ubuntu:26.04
             distribution: resolute
-    env:
-      DEB_DISTRIBUTION: ${{ matrix.distribution }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -185,7 +215,10 @@ jobs:
           compression-level: 0
           if-no-files-found: error
   smoke:
-    needs: debian
+    needs: [validate, debian]
+    env:
+      CORDIAL_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -206,3 +239,42 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund --prefix desktop
       - name: Check installed desktop with sandbox enabled
         run: CORDIAL_EXECUTABLE=/opt/cordial-desktop/cordial-desktop xvfb-run -a dbus-run-session -- node desktop/scripts/smoke.mjs desktop/out/package-smoke
+  publish:
+    needs: [validate, desktop, desktop-platforms, arch, debian, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      CORDIAL_VERSION: ${{ needs.validate.outputs.version }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Collect release packages and checksums
+        shell: bash
+        run: |
+          (cd artifacts && sha256sum -c SHA256SUMS-arch SHA256SUMS-trixie SHA256SUMS-noble SHA256SUMS-resolute)
+          mkdir release
+          cp "artifacts/desktop/dist/cordial-desktop-$CORDIAL_VERSION-x86_64.AppImage" release/
+          cp "artifacts/desktop/dist/cordial-desktop-$CORDIAL_VERSION-x64.tar.gz" release/
+          cp "artifacts/build/packages/web/cordial-web-$CORDIAL_VERSION.tar.gz" release/
+          cp "artifacts/cordial-desktop-$CORDIAL_VERSION-1-x86_64.pkg.tar.zst" release/
+          for distribution in trixie noble resolute; do
+            cp "artifacts/cordial-desktop_${CORDIAL_VERSION}-1~${distribution}_amd64.deb" release/
+          done
+          cp "artifacts/cordial-desktop-$CORDIAL_VERSION-windows-x64.exe" release/
+          for arch in x64 arm64; do
+            cp "artifacts/cordial-desktop-$CORDIAL_VERSION-macos-$arch.dmg" release/
+          done
+          cd release
+          sha256sum * > SHA256SUMS
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes release/*
+          gh release edit "$RELEASE_TAG" --draft=false

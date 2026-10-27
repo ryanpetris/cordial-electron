@@ -135,7 +135,7 @@ update procedure.
 `make check` runs TypeScript checks, desktop and client tests, offline generator
 tests, and repository tool tests. `make package-desktop package-web` builds
 portable packages. Native package and installed desktop checks run in
-`.github/workflows/check.yml`.
+`.github/workflows/release.yml`.
 
 ### Windows and macOS builds
 
@@ -157,8 +157,18 @@ signing credentials. Linux builds produce an AppImage and tar archive.
 
 GitHub Actions builds Windows x64 and separate macOS x64 and arm64 packages.
 Each job installs its package, loads the native serial and USB modules, and runs
-the simulated UI checks. Successful jobs upload downloadable workflow artifacts;
-the workflow does not publish GitHub Releases.
+the simulated UI checks.
+
+The release workflow runs when a tag such as `v1.2.3` is pushed. Tags must use
+`vMAJOR.MINOR.PATCH` without leading zeroes or prerelease suffixes. The workflow
+uses the tag's version (`1.2.3`) for application metadata and package names. After
+all checks pass, it publishes a GitHub Release with Linux AppImage, tar, Arch and
+Debian/Ubuntu packages, the Windows installer, both macOS disk images, the web
+archive, and `SHA256SUMS`. Windows and macOS packages remain unsigned. Branch
+pushes and pull requests do not run CI; run `make check build web` locally.
+
+If publication fails after creating a draft release, delete the incomplete draft
+before rerunning the publish job.
 
 Before releasing on a new platform, check a real adapter: discovery, pairing,
 unplug/replug, a settings change that restarts USB, and reconnecting after the app
