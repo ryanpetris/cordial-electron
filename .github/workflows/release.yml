@@ -77,8 +77,6 @@ jobs:
         include:
           - runner: windows-2025
             artifact: windows-x64
-          - runner: macos-15-intel
-            artifact: macos-x64
           - runner: macos-15
             artifact: macos-arm64
     defaults:
@@ -267,9 +265,7 @@ jobs:
             cp "artifacts/cordial-desktop_${CORDIAL_VERSION}-1~${distribution}_amd64.deb" release/
           done
           cp "artifacts/cordial-desktop-$CORDIAL_VERSION-windows-x64.exe" release/
-          for arch in x64 arm64; do
-            cp "artifacts/cordial-desktop-$CORDIAL_VERSION-macos-$arch.dmg" release/
-          done
+          cp "artifacts/cordial-desktop-$CORDIAL_VERSION-macos-arm64.dmg" release/
           cd release
           sha256sum * > SHA256SUMS
       - name: Publish release

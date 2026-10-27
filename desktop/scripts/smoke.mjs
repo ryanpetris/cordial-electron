@@ -40,8 +40,14 @@ await app.evaluate(async ({ app }) => {
 });
 const errors = [];
 const page = await app.firstWindow();
+await app.evaluate(async ({ BrowserWindow }) => {
+  const window = BrowserWindow.getAllWindows()[0];
+  if (!window.isVisible()) {
+    const { once } = process.getBuiltinModule("node:events");
+    await once(window, "show", { signal: AbortSignal.timeout(30_000) });
+  }
+});
 if (process.platform === "darwin") {
-  await page.waitForFunction(() => document.visibilityState === "visible");
   await app.evaluate(({ BrowserWindow, app }) => {
     const window = BrowserWindow.getAllWindows()[0];
     if (!window.isVisible()) throw new Error("the window is not visible before closing");

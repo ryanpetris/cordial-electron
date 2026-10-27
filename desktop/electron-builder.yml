@@ -44,7 +44,9 @@ win:
     - "!node_modules/@serialport/bindings-cpp/prebuilds/{android,darwin,linux}-*/**"
     - "!node_modules/@serialport/bindings-cpp/prebuilds/win32-!(${arch})/**"
 mac:
-  target: [dmg]
+  target:
+    - target: dmg
+      arch: [arm64]
   executableName: Cordial
   artifactName: ${name}-${version}-macos-${arch}.${ext}
   icon: assets/icons/app-512.png
