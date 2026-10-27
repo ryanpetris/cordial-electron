@@ -33,10 +33,8 @@ desktop/node_modules/.cordial-deps: desktop/package.json desktop/package-lock.js
 deps: desktop/node_modules/.cordial-deps
 build desktop: deps
 	npm --prefix desktop run build
-	cp THIRD_PARTY_NOTICES.txt desktop/out/main/
 web: deps
 	npm --prefix desktop run build:web
-	cp THIRD_PARTY_NOTICES.txt desktop/out/web/
 start: build
 	cd desktop
 	npm exec -- electron .
