@@ -1,11 +1,11 @@
 // Generates TypeScript from an extracted Cordial source archive.
-import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fromBinary } from "@bufbuild/protobuf";
 import { FileDescriptorSetSchema } from "@bufbuild/protobuf/wkt";
 import { fingerprint } from "./fingerprint.mjs";
+import { buf } from "./buf.mjs";
 
 const [source, destination, ...extra] = process.argv.slice(2);
 if (!source || !destination || extra.length) throw new Error("Usage: generate.mjs SOURCE OUTPUT");
@@ -26,7 +26,7 @@ let current;
 for (const entry of readdirSync(join(proto, "serial"), { withFileTypes: true })) {
   if (!entry.isDirectory() || !/^v[1-9][0-9]*$/.test(entry.name)) continue;
   const schema = `serial/${entry.name}/cordial.proto`;
-  const descriptors = fromBinary(FileDescriptorSetSchema, execFileSync("buf", [
+  const descriptors = fromBinary(FileDescriptorSetSchema, buf([
     "build", proto, "--path", join(proto, schema), "--as-file-descriptor-set", "--config", config, "-o", "-",
   ], { cwd: root }));
   const digest = fingerprint(descriptors);
@@ -35,9 +35,9 @@ for (const entry of readdirSync(join(proto, "serial"), { withFileTypes: true }))
   if (entry.name === `v${version}`) current = digest;
 }
 if (!current) throw new Error("Current serial schema is missing");
-execFileSync("buf", ["lint", proto, "--config", config], { cwd: root, stdio: "inherit" });
-const paths = [join(proto, serial), ...files(proto).filter(path => path.endsWith(".proto") && !path.startsWith(join(proto, "serial") + "/"))];
-execFileSync("buf", [
+buf(["lint", proto, "--config", config], { cwd: root, stdio: "inherit" });
+const paths = [join(proto, serial), ...files(proto).filter(path => path.endsWith(".proto") && !path.startsWith(join(proto, "serial") + sep))];
+buf([
   "generate", proto, "--include-imports", ...paths.flatMap(path => ["--path", path]),
   "--config", config, "--template", join(root, "buf.gen.yaml"), "--output", output,
 ], { cwd: root, stdio: "inherit" });

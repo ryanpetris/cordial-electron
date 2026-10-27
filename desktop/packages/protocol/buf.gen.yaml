@@ -1,6 +1,6 @@
 version: v2
 plugins:
-  - local: protoc-gen-es
+  - local: [node, ../../node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es]
     out: src/gen
     opt:
       - target=ts

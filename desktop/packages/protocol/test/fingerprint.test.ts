@@ -1,13 +1,12 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { clone, fromBinary } from "@bufbuild/protobuf";
 import { FileDescriptorSetSchema } from "@bufbuild/protobuf/wkt";
 import { expect, it } from "vitest";
 import { fingerprint } from "../scripts/fingerprint.mjs";
+import { buf } from "../scripts/buf.mjs";
 import { OPERATIONAL_SCHEMA_SHA256 } from "../src/index.ts";
 
-const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const fixtures = fileURLToPath(new URL("./fixtures/fingerprint", import.meta.url));
 
 it("matches the recorded release fingerprint", () => {
@@ -15,7 +14,7 @@ it("matches the recorded release fingerprint", () => {
 });
 
 it("normalizes paths and comments while retaining dependency semantics", () => {
-  const descriptors = fromBinary(FileDescriptorSetSchema, execFileSync(`${root}desktop/node_modules/.bin/buf`, [
+  const descriptors = fromBinary(FileDescriptorSetSchema, buf([
     "build", ".", "--as-file-descriptor-set", "--config", fileURLToPath(new URL("./fixtures/buf.yaml", import.meta.url)), "-o", "-",
   ], { cwd: fixtures }));
   expect(descriptors.file).toHaveLength(3);

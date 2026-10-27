@@ -7,9 +7,9 @@ import { expect, it } from "vitest";
 import { fromBinary } from "@bufbuild/protobuf";
 import { FileDescriptorSetSchema } from "@bufbuild/protobuf/wkt";
 import { fingerprint } from "../scripts/fingerprint.mjs";
+import { buf } from "../scripts/buf.mjs";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
-const bin = join(packageRoot, "../../node_modules/.bin");
 
 it("generates current and imported schemas and rejects mismatched upstream fingerprints", () => {
   const temporary = mkdtempSync(join(tmpdir(), "cordial-generation-"));
@@ -22,17 +22,17 @@ it("generates current and imported schemas and rejects mismatched upstream finge
     writeFileSync(file, content);
   }
   const generate = () => execFileSync(process.execPath, [join(packageRoot, "scripts/generate.mjs"), source, output], {
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: "pipe",
+    stdio: "pipe",
   });
   function recordDigest(version: number) {
-    const descriptors = fromBinary(FileDescriptorSetSchema, execFileSync(join(bin, "buf"), [
+    const descriptors = fromBinary(FileDescriptorSetSchema, buf([
       "build", proto, "--path", join(proto, `serial/v${version}/cordial.proto`),
       "--as-file-descriptor-set", "--config", join(source, "buf.yaml"), "-o", "-",
     ]));
     write(`proto/serial/v${version}/schema.sha256`, fingerprint(descriptors) + "\n");
   }
   try {
-    symlinkSync(join(packageRoot, "../../node_modules"), join(temporary, "node_modules"), "dir");
+    symlinkSync(join(packageRoot, "../../node_modules"), join(temporary, "node_modules"), "junction");
     write("buf.yaml", "version: v2\nlint:\n  use: [MINIMAL]\n  except: [PACKAGE_DIRECTORY_MATCH, DIRECTORY_SAME_PACKAGE]\n");
     write("proto/serial/current", "2\n");
     write("proto/handshake.proto", 'syntax = "proto3"; package fixture.handshake; message Hello { optional string name = 1; }');
@@ -53,7 +53,7 @@ it("generates current and imported schemas and rejects mismatched upstream finge
       expect(existsSync(join(output, "src/gen", path))).toBe(true);
     }
     expect(readFileSync(join(output, "src/gen/cordial_pb.ts"), "utf8")).toContain('"./serial/v2/cordial_pb.ts"');
-    execFileSync(join(bin, "tsc"), [
+    execFileSync(process.execPath, [join(packageRoot, "../../node_modules/typescript/bin/tsc"),
       "--noEmit", "--allowImportingTsExtensions", "--target", "ESNext", "--module", "ESNext",
       "--moduleResolution", "Bundler", "--skipLibCheck", join(output, "src/gen/cordial_pb.ts"),
       join(output, "src/gen/migration_pb.ts"), join(output, "src/gen/storage/v3/storage_pb.ts"),
