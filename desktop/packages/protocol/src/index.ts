@@ -1,5 +1,5 @@
 // The Cordial serial API: protobuf messages generated from
-// proto/serial/v1/cordial.proto and the frame encoding used on the USB serial port.
+// Cordial release schemas and the frame encoding used on the USB serial port.
 export * from "./gen/cordial_pb.ts";
 export * as storageV1 from "./gen/storage/v1/storage_pb.ts";
 export * as storageV2 from "./gen/storage/v2/storage_pb.ts";

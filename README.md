@@ -66,3 +66,52 @@ sudo pacman -U ./cordial-desktop-*-x86_64.pkg.tar.zst
 Launch Cordial from your application menu and connect an adapter running Cordial
 firmware by USB. Choose Add Device to pair a keyboard or mouse, or select an
 existing device to view its status and settings.
+
+## Development
+
+Install Node.js (`^22.12.0 || ^24.0.0 || >=26.0.0`), npm, Python 3, Git, Make, a C++ compiler, `pkg-config`,
+and the libudev development headers. On Debian and Ubuntu, the native build
+prerequisites are `build-essential`, `pkg-config`, and `libudev-dev`.
+
+Clone and build:
+
+```sh
+git clone https://github.com/ryanpetris/cordial-electron.git
+cd cordial-electron
+make check build web
+```
+
+Protocol bindings and shared wire fixtures are committed in
+`desktop/packages/protocol/`. Builds and tests use those files without downloading
+Cordial. Release compatibility checks run in the main Cordial repository.
+
+To update the bindings, install dependencies and run the update script:
+
+```sh
+make deps
+python3 tools/update_protocol.py
+```
+
+The script finds the latest published release through GitHub's releases API and
+downloads its source tar archive. To select a tag explicitly, pass it as an
+argument:
+
+```sh
+python3 tools/update_protocol.py v0.10.4
+```
+
+`npm --prefix desktop run update:protocol -- v0.10.4` runs the same script.
+The script extracts schemas, Buf configuration, and shared test fixtures into a
+temporary directory. It lints the schemas, verifies the upstream fingerprints,
+and generates TypeScript before replacing the committed outputs.
+`desktop/packages/protocol/source.json` records the tag, archive URL, and SHA-256.
+The schemas themselves are not committed.
+
+Review and commit `src/gen/`, `src/current.ts`, `test/fixtures/`, and `source.json`
+together after running `make check build web`. See `AGENTS.md` for the binding
+update procedure.
+
+`make check` runs TypeScript checks, desktop and client tests, offline generator
+tests, and repository tool tests. `make package-desktop package-web` builds
+portable packages. Native package and installed desktop checks run in
+`.github/workflows/check.yml`.

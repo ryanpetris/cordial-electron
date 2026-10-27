@@ -1,90 +1,77 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
+import { fromBinary } from "@bufbuild/protobuf";
+import { FileDescriptorSetSchema } from "@bufbuild/protobuf/wkt";
+import { fingerprint } from "../scripts/fingerprint.mjs";
 
-const source = fileURLToPath(new URL("../../../../", import.meta.url));
+const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+const bin = join(packageRoot, "../../node_modules/.bin");
 
-it("checks retained digests and generates current serial messages with migration IPC and storage", () => {
-  const root = mkdtempSync(join(tmpdir(), "cordial-generation-"));
-  const protocol = join(root, "desktop/packages/protocol");
+it("generates current and imported schemas and rejects mismatched upstream fingerprints", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "cordial-generation-"));
+  const source = join(temporary, "source");
+  const output = join(temporary, "output");
+  const proto = join(source, "proto");
   function write(path: string, content: string) {
-    const file = join(root, path);
+    const file = join(source, path);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, content);
   }
-  const generate = (...args: string[]) => execFileSync(process.execPath, [join(protocol, "scripts/generate.mjs"), ...args], {
-    cwd: root,
-    env: { ...process.env, PATH: `${source}desktop/node_modules/.bin:${process.env.PATH}` },
-    stdio: "pipe",
+  const generate = () => execFileSync(process.execPath, [join(packageRoot, "scripts/generate.mjs"), source, output], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: "pipe",
   });
+  function recordDigest(version: number) {
+    const descriptors = fromBinary(FileDescriptorSetSchema, execFileSync(join(bin, "buf"), [
+      "build", proto, "--path", join(proto, `serial/v${version}/cordial.proto`),
+      "--as-file-descriptor-set", "--config", join(source, "buf.yaml"), "-o", "-",
+    ]));
+    write(`proto/serial/v${version}/schema.sha256`, fingerprint(descriptors) + "\n");
+  }
   try {
-    mkdirSync(protocol, { recursive: true });
-    symlinkSync(`${source}desktop/node_modules`, join(root, "desktop/node_modules"), "dir");
-    cpSync(`${source}desktop/packages/protocol/scripts`, join(protocol, "scripts"), { recursive: true });
-    for (const path of ["buf.yaml", "buf.gen.yaml"]) cpSync(`${source}desktop/packages/protocol/${path}`, join(protocol, path));
-    write("proto/handshake.proto", readFileSync(`${source}proto/handshake.proto`, "utf8"));
+    symlinkSync(join(packageRoot, "../../node_modules"), join(temporary, "node_modules"), "dir");
+    write("buf.yaml", "version: v2\nlint:\n  use: [MINIMAL]\n  except: [PACKAGE_DIRECTORY_MATCH, DIRECTORY_SAME_PACKAGE]\n");
     write("proto/serial/current", "2\n");
-    for (const path of ["migration.proto", "storage/v1/storage.proto", "storage/v2/storage.proto"]) {
-      write(`proto/${path}`, readFileSync(`${source}proto/${path}`, "utf8"));
+    write("proto/handshake.proto", 'syntax = "proto3"; package fixture.handshake; message Hello { optional string name = 1; }');
+    write("proto/migration.proto", 'syntax = "proto3"; package fixture.migration; message Start { string adapter_id = 1; }');
+    for (const version of [1, 2, 3]) {
+      write(`proto/storage/v${version}/storage.proto`, `syntax = "proto3"; package fixture.storage.v${version}; message Sequence { uint64 next_device = 1; }`);
     }
     write("proto/serial/v1/cordial.proto", 'syntax = "proto3"; package fixture.serial.v1; message Request { uint32 id = 1; }');
     const imported = 'syntax = "proto3"; package fixture.shared; message Value { uint32 value = 1; }';
     write("proto/shared/common.proto", imported);
     write("proto/serial/v2/cordial.proto", 'syntax = "proto3"; package fixture.serial.v2; import "shared/common.proto"; message Request { fixture.shared.Value value = 1; }');
+    recordDigest(1);
+    recordDigest(2);
     generate();
-    generate("--check");
-    expect(readFileSync(join(protocol, "src/gen/serial/v2/cordial_pb.ts"), "utf8")).toContain('"../../shared/common_pb.ts"');
-    expect(existsSync(join(protocol, "src/gen/shared/common_pb.ts"))).toBe(true);
-    expect(existsSync(join(protocol, "src/gen/serial/v1"))).toBe(false);
-    expect(existsSync(join(protocol, "src/gen/storage_pb.ts"))).toBe(false);
-    for (const path of ["migration_pb.ts", "storage/v1/storage_pb.ts", "storage/v2/storage_pb.ts"]) {
-      expect(existsSync(join(protocol, "src/gen", path))).toBe(true);
+    expect(readFileSync(join(output, "src/gen/serial/v2/cordial_pb.ts"), "utf8")).toContain('"../../shared/common_pb.ts"');
+    expect(existsSync(join(output, "src/gen/serial/v1"))).toBe(false);
+    for (const path of ["handshake_pb.ts", "migration_pb.ts", "shared/common_pb.ts", "storage/v1/storage_pb.ts", "storage/v2/storage_pb.ts", "storage/v3/storage_pb.ts"]) {
+      expect(existsSync(join(output, "src/gen", path))).toBe(true);
     }
-    const operational = readFileSync(join(protocol, "src/current.ts"), "utf8");
-    write("proto/handshake.proto", readFileSync(`${source}proto/handshake.proto`, "utf8").replace("string name = 4", "string display_name = 4"));
-    generate();
-    expect(readFileSync(join(protocol, "src/gen/handshake_pb.ts"), "utf8")).toContain("displayName?");
-    expect(readFileSync(join(protocol, "src/current.ts"), "utf8")).toBe(operational);
-    write("proto/migration.proto", readFileSync(`${source}proto/migration.proto`, "utf8").replace("string adapter_id", "string hardware_id"));
-    write("proto/storage/v2/storage.proto", readFileSync(`${source}proto/storage/v2/storage.proto`, "utf8").replace("uint64 next_device", "string next_device"));
-    generate();
-    expect(readFileSync(join(protocol, "src/current.ts"), "utf8")).toBe(operational);
-    expect(readFileSync(join(protocol, "src/gen/cordial_pb.ts"), "utf8")).toContain('"./serial/v2/cordial_pb.ts"');
-
-    execFileSync(`${source}desktop/node_modules/.bin/tsc`, [
+    expect(readFileSync(join(output, "src/gen/cordial_pb.ts"), "utf8")).toContain('"./serial/v2/cordial_pb.ts"');
+    execFileSync(join(bin, "tsc"), [
       "--noEmit", "--allowImportingTsExtensions", "--target", "ESNext", "--module", "ESNext",
-      "--moduleResolution", "Bundler", "--skipLibCheck", join(protocol, "src/gen/cordial_pb.ts"),
-      join(protocol, "src/gen/migration_pb.ts"), join(protocol, "src/gen/storage/v1/storage_pb.ts"),
-      join(protocol, "src/gen/storage/v2/storage_pb.ts"),
-    ], { cwd: root, stdio: "pipe" });
+      "--moduleResolution", "Bundler", "--skipLibCheck", join(output, "src/gen/cordial_pb.ts"),
+      join(output, "src/gen/migration_pb.ts"), join(output, "src/gen/storage/v3/storage_pb.ts"),
+    ], { cwd: temporary, stdio: "pipe" });
 
-    const historical = readFileSync(join(root, "proto/serial/v1/schema.sha256"), "utf8");
+    const current = readFileSync(join(output, "src/current.ts"), "utf8");
+    const historical = readFileSync(join(proto, "serial/v1/schema.sha256"), "utf8");
     write("proto/serial/v1/schema.sha256", "invalid\n");
-    expect(() => generate("--check")).toThrow();
+    expect(() => generate()).toThrow(/fingerprint does not match/);
+    expect(readFileSync(join(proto, "serial/v1/schema.sha256"), "utf8")).toBe("invalid\n");
+    expect(readFileSync(join(output, "src/current.ts"), "utf8")).toBe(current);
     write("proto/serial/v1/schema.sha256", historical);
-    write("proto/serial/v1/cordial.proto", 'syntax = "proto3"; package fixture.serial.v1; message Request { string id = 1; }');
-    expect(() => generate("--check")).toThrow();
-    generate();
-    expect(readFileSync(join(root, "proto/serial/v1/schema.sha256"), "utf8")).not.toBe(historical);
-
-    const current = readFileSync(join(protocol, "src/current.ts"), "utf8");
     write("proto/shared/common.proto", imported.replace("uint32 value", "string value"));
-    expect(() => generate("--check")).toThrow();
+    expect(() => generate()).toThrow(/fingerprint does not match/);
+    recordDigest(2);
     generate();
-    expect(readFileSync(join(protocol, "src/current.ts"), "utf8")).not.toBe(current);
-    write("desktop/packages/protocol/src/gen/serial/v1/cordial_pb.ts", "stale");
-    expect(() => generate("--check")).toThrow();
-    generate();
-    expect(existsSync(join(protocol, "src/gen/serial/v1"))).toBe(false);
-    mkdirSync(join(protocol, "src/gen/serial/v1"));
-    expect(() => generate("--check")).toThrow();
-    generate();
-    expect(existsSync(join(protocol, "src/gen/serial/v1"))).toBe(false);
-    generate("--check");
+    expect(readFileSync(join(output, "src/current.ts"), "utf8")).not.toBe(current);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(temporary, { recursive: true, force: true });
   }
 }, 20_000);

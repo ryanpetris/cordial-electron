@@ -1,6 +1,6 @@
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
-import fixtures from "../../../../rust/crates/cordial-protocol/tests/fixtures/handshake.json";
+import fixtures from "./fixtures/handshake.json";
 import {
   AdapterHelloSchema, ClientHelloSchema, CURRENT_PROTOCOL_VERSION, MAX_HANDSHAKE_BYTES,
   decodeClientHello, decodeAdapterHello, encodeClientHello, encodeAdapterHello,

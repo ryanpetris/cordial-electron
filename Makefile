@@ -10,15 +10,13 @@ export electron_config_cache ?= $(CURDIR)/.cache/electron
 export ELECTRON_BUILDER_CACHE ?= $(CURDIR)/.cache/electron-builder
 DESKTOP_TARGETS ?= AppImage tar.gz
 desktop_archive = $(or $(DESKTOP_ARCHIVE),desktop/dist/cordial-desktop-$(CORDIAL_VERSION)-x64.tar.gz)
-PROTOCOL_BASE ?=
-PROTOCOL_STABLE_BASE ?=
 DEB_DISTRIBUTION ?= trixie
 DEB_BASE_trixie := debian:13
 DEB_BASE_noble := ubuntu:24.04
 DEB_BASE_resolute := ubuntu:26.04
 DEB_BASE = $(or $(DEB_BASE_$(DEB_DISTRIBUTION)),$(error Unknown DEB_DISTRIBUTION $(DEB_DISTRIBUTION)))
 
-.PHONY: help deps build desktop web start simulate check check-desktop check-protocol check-tools \
+.PHONY: help deps build desktop web start simulate check check-desktop check-tools \
 	package-desktop package-desktop-tar package-web package-desktop-arch package-desktop-deb \
 	image-arch image-deb smoke version clean
 
@@ -46,16 +44,10 @@ simulate: build
 	cd desktop
 	CORDIAL_DESKTOP_SIMULATE=2 npm exec -- electron .
 
-check: check-desktop check-protocol check-tools
+check: check-desktop check-tools
 check-desktop: deps
-	npm --prefix desktop run check:generated
 	npm --prefix desktop run typecheck
 	npm --prefix desktop test -- --execArgv=--expose-gc
-check-protocol: deps
-	npm --prefix desktop/packages/protocol run lint
-	if [ -n "$(PROTOCOL_BASE)$(PROTOCOL_STABLE_BASE)" ]; then
-		$(PYTHON) tools/check_protocol.py --base "$(PROTOCOL_BASE)" --stable-base "$(PROTOCOL_STABLE_BASE)"
-	fi
 check-tools: deps
 	$(PYTHON) -m unittest discover -s tools -p 'test_*.py'
 

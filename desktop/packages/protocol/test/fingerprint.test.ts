@@ -5,18 +5,18 @@ import { clone, fromBinary } from "@bufbuild/protobuf";
 import { FileDescriptorSetSchema } from "@bufbuild/protobuf/wkt";
 import { expect, it } from "vitest";
 import { fingerprint } from "../scripts/fingerprint.mjs";
-import { OPERATIONAL_SCHEMA_SHA256, CURRENT_PROTOCOL_VERSION } from "../src/index.ts";
+import { OPERATIONAL_SCHEMA_SHA256 } from "../src/index.ts";
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
-const fixtures = `${root}rust/crates/cordial-protocol/tests/fixtures/fingerprint`;
+const fixtures = fileURLToPath(new URL("./fixtures/fingerprint", import.meta.url));
 
-it("matches the operational digest checked independently by the Rust fixture", () => {
-  expect(OPERATIONAL_SCHEMA_SHA256).toBe(readFileSync(`${root}proto/serial/v${CURRENT_PROTOCOL_VERSION}/schema.sha256`, "utf8").trim());
+it("matches the recorded release fingerprint", () => {
+  expect(OPERATIONAL_SCHEMA_SHA256).toBe(readFileSync(new URL("./fixtures/schema.sha256", import.meta.url), "utf8").trim());
 });
 
 it("normalizes paths and comments while retaining dependency semantics", () => {
   const descriptors = fromBinary(FileDescriptorSetSchema, execFileSync(`${root}desktop/node_modules/.bin/buf`, [
-    "build", ".", "--as-file-descriptor-set", "--config", `${root}desktop/packages/protocol/buf.yaml`, "-o", "-",
+    "build", ".", "--as-file-descriptor-set", "--config", fileURLToPath(new URL("./fixtures/buf.yaml", import.meta.url)), "-o", "-",
   ], { cwd: fixtures }));
   expect(descriptors.file).toHaveLength(3);
   const expected = readFileSync(`${fixtures}/schema.sha256`, "utf8").trim();

@@ -15,8 +15,6 @@
     "packages/*"
   ],
   "scripts": {
-    "generate": "npm --workspace @cordial/protocol run generate",
-    "check:generated": "npm --workspace @cordial/protocol run check:generated",
     "icons": "node scripts/icons.mjs",
     "typecheck": "tsc -p .",
     "test": "vitest run",
@@ -25,7 +23,8 @@
     "start": "npm run build && electron .",
     "simulate": "npm run build && CORDIAL_DESKTOP_SIMULATE=2 electron .",
     "serve": "node scripts/serve.mjs",
-    "check": "npm run check:generated && npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "update:protocol": "python3 ../tools/update_protocol.py"
   },
   "dependencies": {
     "react": "19.3.1",
