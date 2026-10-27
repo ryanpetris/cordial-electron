@@ -12,12 +12,13 @@ files:
   - assets/icons/*.png
   - package.json
   - "!**/*.map"
-  - "!node_modules/@serialport/bindings-cpp/prebuilds/{android,darwin,win32}-*/**"
-  - "!node_modules/@serialport/bindings-cpp/prebuilds/linux-!(${arch})/**"
   - "!node_modules/@serialport/bindings-cpp/prebuilds/**/*.musl.node"
 artifactName: ${name}-${version}-${arch}.${ext}
 linux:
   target: [AppImage, tar.gz]
+  files:
+    - "!node_modules/@serialport/bindings-cpp/prebuilds/{android,darwin,win32}-*/**"
+    - "!node_modules/@serialport/bindings-cpp/prebuilds/linux-!(${arch})/**"
   syncDesktopName: true
   category: Utility
   icon: assets/icons/app-512.png
@@ -27,14 +28,38 @@ linux:
     entry:
       StartupWMClass: cordial-desktop
       Keywords: bluetooth;keyboard;mouse;battery;
+  extraFiles:
+    - from: packaging/cordial-desktop.desktop
+      to: cordial-desktop.desktop
+    - from: assets/icons/app-512.png
+      to: cordial-desktop.png
+    - from: ../configs/50-cordial.rules
+      to: 50-cordial.rules
+win:
+  target: [nsis]
+  artifactName: ${name}-${version}-windows-${arch}.${ext}
+  icon: assets/icons/app-512.png
+  signExecutable: false
+  files:
+    - "!node_modules/@serialport/bindings-cpp/prebuilds/{android,darwin,linux}-*/**"
+    - "!node_modules/@serialport/bindings-cpp/prebuilds/win32-!(${arch})/**"
+mac:
+  target: [dmg]
+  executableName: Cordial
+  artifactName: ${name}-${version}-macos-${arch}.${ext}
+  icon: assets/icons/app-512.png
+  category: public.app-category.utilities
+  identity: null
+  notarize: false
+  files:
+    - "!node_modules/@serialport/bindings-cpp/prebuilds/{android,linux,win32}-*/**"
+nsis:
+  runAfterFinish: false
+  include: packaging/windows/installer.nsh
+dmg:
+  sign: false
 extraFiles:
   - from: ../LICENSE
     to: LICENSE
   - from: out/VERSION
     to: VERSION
-  - from: packaging/cordial-desktop.desktop
-    to: cordial-desktop.desktop
-  - from: assets/icons/app-512.png
-    to: cordial-desktop.png
-  - from: ../configs/50-cordial.rules
-    to: 50-cordial.rules

@@ -69,15 +69,15 @@ function savePreferences(p: Preferences) {
   if (p.startAtLogin !== savedAutostart) setAutostart(p.startAtLogin);
 }
 
-/** XDG autostart entry that starts the app in the tray. */
+/** Starts the app at login using the host's startup mechanism. */
 function setAutostart(enabled: boolean) {
   savedAutostart = enabled;
-  if (process.platform !== "linux") {
-    app.setLoginItemSettings({ openAtLogin: enabled, args: ["--hidden"] });
-    return;
-  }
   const file = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "autostart", "cordial-desktop.desktop");
   try {
+    if (process.platform !== "linux") {
+      app.setLoginItemSettings({ openAtLogin: enabled, ...(process.platform === "win32" ? { args: ["--hidden"] } : {}) });
+      return;
+    }
     if (!enabled) return rmSync(file, { force: true });
     const exec = process.env.APPIMAGE ?? process.execPath;
     const args = app.isPackaged ? [] : [app.getAppPath()];
@@ -140,8 +140,7 @@ function createWindow() {
     show: false,
     title: "Cordial",
     icon: join(icons, "app.png"),
-    titleBarStyle: "hidden",
-    titleBarOverlay: titleBarOverlay(),
+    ...(process.platform === "darwin" ? {} : { titleBarStyle: "hidden" as const, titleBarOverlay: titleBarOverlay() }),
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#242424" : "#fafafa",
     webPreferences: {
       preload: join(root, "out", "preload", "index.cjs"),
@@ -313,6 +312,7 @@ void app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_, __, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   if (process.platform === "linux") app.setDesktopName("cordial-desktop.desktop");
+  if (process.platform === "win32") app.setAppUserModelId("dev.petris.cordial");
   const preferences = loadPreferences();
   savedAutostart = preferences.startAtLogin;
   const fake = Number(process.env.CORDIAL_DESKTOP_SIMULATE ?? 0);
@@ -359,14 +359,18 @@ void app.whenReady().then(async () => {
     return act(action);
   });
   nativeTheme.on("updated", () => {
-    window?.setTitleBarOverlay(titleBarOverlay());
+    if (process.platform !== "darwin") window?.setTitleBarOverlay(titleBarOverlay());
     updateTray(controller.state());
   });
 
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(process.platform === "darwin"
+    ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }])
+    : null);
+  app.on("activate", () => showWindow());
   if (simulated) simulated.onHotplug(() => controller.manager.burst());
   else stopHotplug = await watchHotplug(() => controller.manager.burst(), log);
   controller.changed();
   await controller.manager.rescan();
-  if (!hidden) showWindow();
+  const login = process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAtLogin;
+  if (!hidden && !login) showWindow();
 });

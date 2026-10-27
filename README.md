@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/ryanpetris/cordial-electron/releases/latest"><img src="https://img.shields.io/github/v/release/ryanpetris/cordial-electron?label=latest" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/desktop-Linux%20x86--64-informational" alt="Desktop app: Linux x86-64">
+  <img src="https://img.shields.io/badge/desktop-Linux%20%7C%20Windows%20%7C%20macOS-informational" alt="Desktop app: Linux, Windows and macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
 </p>
 
@@ -36,12 +36,33 @@
 
 ## Install
 
-Download the `cordial-desktop` package for your Linux x86-64 distribution from
+Download the `cordial-desktop` package for your operating system from
 [the app releases](https://github.com/ryanpetris/cordial-electron/releases).
+
+### Windows
+
+Download `cordial-desktop-*-windows-x64.exe` and run the installer. The installer
+is unsigned, so Windows may show an unknown-publisher or SmartScreen warning.
+Install only a package you trust. Cordial uses the standard USB serial driver;
+no separate driver installation is expected.
+
+### macOS
+
+Download `cordial-desktop-*-macos-arm64.dmg` for Apple Silicon or
+`cordial-desktop-*-macos-x64.dmg` for Intel. Open the disk image and drag Cordial
+to Applications.
+
+These packages are unsigned and not notarized. If macOS blocks a trusted download,
+try opening Cordial, then use System Settings > Privacy & Security > Open Anyway
+if offered. An unsigned build can also be rejected as damaged; downloading and
+opening the release on a separate Mac needs manual validation before distribution.
+See [Apple's instructions](https://support.apple.com/en-us/102445).
+Start at Login may not work reliably with an unsigned app. Apple Silicon laptops
+may also ask you to allow the USB adapter to connect.
 
 ### Debian and Ubuntu
 
-Choose the package matching your distribution:
+Choose the Linux x86-64 package matching your distribution:
 
 - Debian 13 Trixie: `cordial-desktop_*trixie_amd64.deb`
 - Ubuntu 24.04 Noble: `cordial-desktop_*noble_amd64.deb`
@@ -115,3 +136,31 @@ update procedure.
 tests, and repository tool tests. `make package-desktop package-web` builds
 portable packages. Native package and installed desktop checks run in
 `.github/workflows/check.yml`.
+
+### Windows and macOS builds
+
+Install Node.js and npm using the versions above. From `desktop/`, run:
+
+```sh
+npm ci --include=dev
+node node_modules/electron/install.js
+npm run check
+npm run package
+```
+
+`npm run package` builds for the current operating system and CPU architecture,
+using the bundled native dependencies. It writes packages to `desktop/dist/`.
+Set `CORDIAL_VERSION` to a release version such as `1.2.3` before building;
+it defaults to `0.0.0`. Windows builds produce an unsigned NSIS installer, and
+macOS builds produce an unsigned, unnotarized disk image. Neither requires
+signing credentials. Linux builds produce an AppImage and tar archive.
+
+GitHub Actions builds Windows x64 and separate macOS x64 and arm64 packages.
+Each job installs its package, loads the native serial and USB modules, and runs
+the simulated UI checks. Successful jobs upload downloadable workflow artifacts;
+the workflow does not publish GitHub Releases.
+
+Before releasing on a new platform, check a real adapter: discovery, pairing,
+unplug/replug, a settings change that restarts USB, and reconnecting after the app
+exits. Also check tray menus, notifications, starting hidden at login and sleep/wake.
+Hosted CI uses simulated adapters and cannot verify physical USB communication.

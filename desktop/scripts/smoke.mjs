@@ -14,14 +14,43 @@ mkdirSync(out, { recursive: true });
 // desktop the run shares a session bus with.
 const profile = mkdtempSync(join(tmpdir(), "cordial-smoke-"));
 writeFileSync(join(profile, "preferences.json"), JSON.stringify({ notifyLowBattery: false, notifyConnections: false }));
+const env = { ...process.env, CORDIAL_DESKTOP_SIMULATE: "2", ELECTRON_ENABLE_LOGGING: "1" };
+delete env.ELECTRON_RUN_AS_NODE;
 const app = await electron.launch({
   executablePath: process.env.CORDIAL_EXECUTABLE,
   chromiumSandbox: true,
   args: [...(process.env.CORDIAL_EXECUTABLE ? [] : ["."]), `--user-data-dir=${profile}`, `--force-dark-mode=${scheme === "dark"}`],
-  env: { ...process.env, CORDIAL_DESKTOP_SIMULATE: "2", ELECTRON_ENABLE_LOGGING: "1" },
+  env,
+});
+// Simulation does not load the USB watcher, so check the shipped native modules separately.
+await app.evaluate(async ({ app }) => {
+  const { createRequire } = process.getBuiltinModule("node:module");
+  const { join } = process.getBuiltinModule("node:path");
+  const require = createRequire(join(app.getAppPath(), "package.json"));
+  const { SerialPort } = require("serialport");
+  await SerialPort.list();
+  const { Emitter } = require("usb/index.js");
+  const watcher = new Emitter();
+  try {
+    await watcher.addAttach(() => {});
+    await watcher.addDetach(() => {});
+  } finally {
+    await Promise.all([watcher.removeAttach(), watcher.removeDetach()]);
+  }
 });
 const errors = [];
 const page = await app.firstWindow();
+if (process.platform === "darwin") {
+  await page.waitForFunction(() => document.visibilityState === "visible");
+  await app.evaluate(({ BrowserWindow, app }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window.isVisible()) throw new Error("the window is not visible before closing");
+    window.close();
+    if (window.isVisible()) throw new Error("closing the window did not hide it");
+    app.emit("activate");
+    if (!window.isVisible()) throw new Error("Dock activation did not reopen the window");
+  });
+}
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 page.on("pageerror", (e) => errors.push(String(e)));
 await page.emulateMedia({ colorScheme: scheme });

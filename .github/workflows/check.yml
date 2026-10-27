@@ -43,6 +43,93 @@ jobs:
             build/packages/web/
           compression-level: 0
           if-no-files-found: error
+  desktop-platforms:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            artifact: windows-x64
+          - runner: macos-15-intel
+            artifact: macos-x64
+          - runner: macos-15
+            artifact: macos-arm64
+    defaults:
+      run:
+        working-directory: desktop
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci --include=dev
+          node node_modules/electron/install.js
+      - name: Check and build unsigned package
+        run: |
+          npm run check
+          npm run build:web
+          npm run package
+      - name: Install Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem dist/cordial-desktop-*-windows-x64.exe).FullName
+          $destination = Join-Path $env:RUNNER_TEMP 'Cordial'
+          $startup = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $login = "`"$destination\cordial-desktop.exe`" --hidden"
+          foreach ($attempt in 1..2) {
+            $result = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$destination" -Wait -PassThru
+            if ($result.ExitCode -ne 0) { throw "Installer exited with $($result.ExitCode)" }
+            if ($attempt -eq 1) {
+              New-Item -Path $startup -Force | Out-Null
+              New-ItemProperty -Path $startup -Name 'dev.petris.cordial' -Value $login -Force | Out-Null
+            } elseif ((Get-ItemPropertyValue -Path $startup -Name 'dev.petris.cordial') -ne $login) {
+              throw 'Reinstallation changed the login item'
+            }
+          }
+          "CORDIAL_EXECUTABLE=$destination\cordial-desktop.exe" >> $env:GITHUB_ENV
+      - name: Install macOS package
+        if: runner.os == 'macOS'
+        run: |
+          mount="$RUNNER_TEMP/cordial-dmg"
+          hdiutil attach dist/*.dmg -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          ditto "$mount/Cordial.app" "$RUNNER_TEMP/Cordial.app"
+          echo "CORDIAL_EXECUTABLE=$RUNNER_TEMP/Cordial.app/Contents/MacOS/Cordial" >> "$GITHUB_ENV"
+      - name: Check installed package and native modules
+        run: node scripts/smoke.mjs out/package-smoke
+      - name: Uninstall Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $destination = Split-Path $env:CORDIAL_EXECUTABLE
+          $startup = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $result = Start-Process -FilePath "$destination/Uninstall cordial-desktop.exe" -ArgumentList '/S', "_?=$destination" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Uninstaller exited with $($result.ExitCode)" }
+          if (Test-Path $env:CORDIAL_EXECUTABLE) { throw 'Uninstaller left the application executable' }
+          if (Get-ItemProperty -Path $startup -Name 'dev.petris.cordial' -ErrorAction SilentlyContinue) { throw 'Uninstaller left the login item' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: smoke-${{ matrix.artifact }}
+          path: desktop/out/package-smoke/
   arch:
     needs: desktop
     runs-on: ubuntu-24.04

@@ -20,10 +20,11 @@
     "test": "vitest run",
     "build": "vite build --config vite.main.config.mjs && vite build --config vite.preload.config.mjs && vite build --config vite.renderer.config.mjs",
     "build:web": "vite build --config vite.web.config.mjs",
+    "package": "npm run build && node scripts/package.mjs",
     "start": "npm run build && electron .",
     "simulate": "npm run build && CORDIAL_DESKTOP_SIMULATE=2 electron .",
     "serve": "node scripts/serve.mjs",
-    "check": "npm run typecheck && npm test",
+    "check": "npm run typecheck && npm test -- --execArgv=--expose-gc",
     "update:protocol": "python3 ../tools/update_protocol.py"
   },
   "dependencies": {

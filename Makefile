@@ -46,17 +46,13 @@ simulate: build
 
 check: check-desktop check-tools
 check-desktop: deps
-	npm --prefix desktop run typecheck
-	npm --prefix desktop test -- --execArgv=--expose-gc
+	npm --prefix desktop run check
 check-tools: deps
 	$(PYTHON) -m unittest discover -s tools -p 'test_*.py'
 
 package-desktop-tar: DESKTOP_TARGETS = tar.gz
-package-desktop package-desktop-tar: build
-	version=$$($(PYTHON) tools/version.py)
-	printf '%s\n' "$$version" > desktop/out/VERSION
-	cd desktop
-	npm exec -- electron-builder --linux $(DESKTOP_TARGETS) --publish never --config.extraMetadata.version="$$version"
+package-desktop package-desktop-tar: deps
+	npm --prefix desktop run package -- $(DESKTOP_TARGETS)
 
 package-web: web
 	version=$$($(PYTHON) tools/version.py)
