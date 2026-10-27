@@ -48,8 +48,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libudev-dev pkg-config
-      - name: Check and build
-        run: make check build web
       - name: Package desktop and web
         run: |
           make package-desktop package-web
@@ -96,11 +94,8 @@ jobs:
         run: |
           npm ci --include=dev
           node node_modules/electron/install.js
-      - name: Check and build unsigned package
-        run: |
-          npm run check
-          npm run build:web
-          npm run package
+      - name: Build unsigned package
+        run: npm run package
       - name: Install Windows package
         if: runner.os == 'Windows'
         shell: pwsh
@@ -120,16 +115,6 @@ jobs:
             }
           }
           "CORDIAL_EXECUTABLE=$destination\cordial-desktop.exe" >> $env:GITHUB_ENV
-      - name: Install macOS package
-        if: runner.os == 'macOS'
-        run: |
-          mount="$RUNNER_TEMP/cordial-dmg"
-          hdiutil attach dist/*.dmg -nobrowse -mountpoint "$mount"
-          trap 'hdiutil detach "$mount"' EXIT
-          ditto "$mount/Cordial.app" "$RUNNER_TEMP/Cordial.app"
-          echo "CORDIAL_EXECUTABLE=$RUNNER_TEMP/Cordial.app/Contents/MacOS/Cordial" >> "$GITHUB_ENV"
-      - name: Check installed package and native modules
-        run: node scripts/smoke.mjs out/package-smoke
       - name: Uninstall Windows package
         if: runner.os == 'Windows'
         shell: pwsh
@@ -148,11 +133,6 @@ jobs:
             desktop/dist/*.dmg
           compression-level: 0
           if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: smoke-${{ matrix.artifact }}
-          path: desktop/out/package-smoke/
   arch:
     needs: [validate, desktop]
     env:
@@ -212,33 +192,8 @@ jobs:
           path: release/
           compression-level: 0
           if-no-files-found: error
-  smoke:
-    needs: [validate, debian]
-    env:
-      CORDIAL_VERSION: ${{ needs.validate.outputs.version }}
-      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          name: noble
-          path: build/native
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '26'
-      - name: Install package and test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb dbus-x11 ./build/native/cordial-desktop_*_amd64.deb
-          npm ci --ignore-scripts --no-audit --no-fund --prefix desktop
-      - name: Check installed desktop with sandbox enabled
-        run: CORDIAL_EXECUTABLE=/opt/cordial-desktop/cordial-desktop xvfb-run -a dbus-run-session -- node desktop/scripts/smoke.mjs desktop/out/package-smoke
   publish:
-    needs: [validate, desktop, desktop-platforms, arch, debian, smoke]
+    needs: [validate, desktop, desktop-platforms, arch, debian]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

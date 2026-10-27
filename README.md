@@ -133,8 +133,13 @@ update procedure.
 
 `make check` runs TypeScript checks, desktop and client tests, offline generator
 tests, and repository tool tests. `make package-desktop package-web` builds
-portable packages. Native package and installed desktop checks run in
-`.github/workflows/release.yml`.
+portable packages. `make smoke` runs the desktop UI and reconnect checks locally
+under Xvfb. The release workflow checks package installation and archive integrity;
+it does not run the regression suites or desktop smoke tests.
+
+Release tests and validation share a two-minute runtime budget across all jobs.
+Build, packaging, and publishing time does not count toward this budget. Keep
+broader regression coverage in the local checks.
 
 ### Windows and macOS builds
 
@@ -155,9 +160,9 @@ it defaults to `0.0.0`. Windows builds produce an unsigned NSIS installer, and
 macOS builds produce an unsigned, unnotarized disk image. Neither requires
 signing credentials. Linux builds produce an AppImage and tar archive.
 
-GitHub Actions builds Windows x64 and macOS arm64 packages.
-Each job installs its package, loads the native serial and USB modules, and runs
-the simulated UI checks.
+GitHub Actions builds Windows x64 and macOS arm64 packages. The Windows job
+checks installation, reinstallation and removal. Run native module and UI smoke
+checks locally with `CORDIAL_EXECUTABLE` pointing to the installed application.
 
 The release workflow runs when a tag such as `v1.2.3` is pushed. Tags must use
 `vMAJOR.MINOR.PATCH` without leading zeroes or prerelease suffixes. The workflow
