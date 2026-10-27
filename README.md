@@ -161,8 +161,13 @@ macOS builds produce an unsigned, unnotarized disk image. Neither requires
 signing credentials. Linux builds produce an AppImage and tar archive.
 
 GitHub Actions builds Windows x64 and macOS arm64 packages. The Windows job
-checks installation, reinstallation and removal. Run native module and UI smoke
-checks locally with `CORDIAL_EXECUTABLE` pointing to the installed application.
+checks installation, reinstallation and removal. The macOS job checks that the
+disk image mounts and contains the application executable.
+
+To run native module and UI smoke checks locally, set `CORDIAL_EXECUTABLE` to the
+installed executable, then run `node scripts/smoke.mjs out/package-smoke` from
+`desktop/`. On Linux, use `make smoke` from the repository root with the same
+environment variable to supply Xvfb and a private D-Bus session.
 
 The release workflow runs when a tag such as `v1.2.3` is pushed. Tags must use
 `vMAJOR.MINOR.PATCH` without leading zeroes or prerelease suffixes. The workflow

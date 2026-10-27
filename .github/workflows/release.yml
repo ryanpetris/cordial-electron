@@ -96,6 +96,13 @@ jobs:
           node node_modules/electron/install.js
       - name: Build unsigned package
         run: npm run package
+      - name: Check macOS disk image
+        if: runner.os == 'macOS'
+        run: |
+          mount="$RUNNER_TEMP/cordial-dmg"
+          hdiutil attach dist/*.dmg -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          test -x "$mount/Cordial.app/Contents/MacOS/Cordial"
       - name: Install Windows package
         if: runner.os == 'Windows'
         shell: pwsh
